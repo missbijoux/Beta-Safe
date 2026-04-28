@@ -1,0 +1,1 @@
+# Betasafe custom prototype package.

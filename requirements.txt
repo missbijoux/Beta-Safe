@@ -1,0 +1,14 @@
+PySide6>=6.6
+opencv-python-headless>=4.8
+numpy>=1.24
+mss>=9.0
+dxcam>=0.0.5; sys_platform == 'win32'
+# Optional: global F10 pause. macOS needs Accessibility permission for pynput.
+# pynput>=1.7
+# Optional: BETASAFE_ONNX_PATH (YOLOv8 ONNX export)
+# Optional: BETASAFE_ADULT_ONNX_PATH (binary NSFW / adult classifier ONNX)
+# onnxruntime>=1.16
+# Optional: BETASAFE_ADULT_HF_MODEL (Hugging Face direct, no ONNX)
+# transformers>=4.40
+# torch>=2.2
+# pillow>=10
