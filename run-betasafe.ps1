@@ -85,6 +85,11 @@ if ($AdultOnnxPath) {
 elseif ($AdultHfModel) {
     $env:BETASAFE_ADULT_HF_MODEL = $AdultHfModel
     Remove-Item Env:BETASAFE_ADULT_ONNX_PATH -ErrorAction SilentlyContinue
+    # HF models tend to produce lower raw scores; use a friendlier default
+    # threshold when presets left the ONNX-style threshold at a strict value.
+    if (-not $env:BETASAFE_ADULT_ONNX_THRESHOLD -or $env:BETASAFE_ADULT_ONNX_THRESHOLD -ge 0.9) {
+        $env:BETASAFE_ADULT_ONNX_THRESHOLD = "0.35"
+    }
 }
 else {
     Write-Warning "No adult model provided. Blocking may be broad/random without an adult model."

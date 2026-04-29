@@ -193,6 +193,12 @@ class CensorOverlay(QWidget):
             painter.fillRect(self.rect(), QColor(0, 255, 255, 28))
         for rect, img in self._layers:
             if img.isNull():
+                # Fallback: if patch->QImage conversion fails, still draw an opaque
+                # block so protection remains visible instead of silently disappearing.
+                painter.fillRect(rect, QColor(0, 0, 0, 220))
+                if self._debug_draw:
+                    painter.setPen(QColor(255, 0, 0, 220))
+                    painter.drawRect(rect)
                 continue
             painter.drawImage(rect, img)
             if self._debug_draw:
@@ -236,21 +242,30 @@ class _LayerJob(QRunnable):
 
     def run(self) -> None:
         layers: list[tuple[QRect, QImage]] = []
-        for x, y, w, h in self.rects_proc:
-            if w <= 2 or h <= 2:
-                continue
-            patch = self.bgr_proc[y : y + h, x : x + w]
-            if self.mode == "blur":
-                out = mosaic.gaussian_blur(patch, ksize=31)
-            else:
-                out = mosaic.pixel_mosaic(patch, block_size=self.block)
-            img = _bgr_patch_to_qimage(out)
-            xd = int(round(x * self.sx))
-            yd = int(round(y * self.sy))
-            wd = max(1, int(round(w * self.sx)))
-            hd = max(1, int(round(h * self.sy)))
-            layers.append((QRect(xd, yd, wd, hd), img))
-        self.signals.ready.emit(self.key, layers)
+        try:
+            for x, y, w, h in self.rects_proc:
+                if w <= 2 or h <= 2:
+                    continue
+                patch = self.bgr_proc[y : y + h, x : x + w]
+                if patch.size == 0:
+                    continue
+                try:
+                    if self.mode == "blur":
+                        out = mosaic.gaussian_blur(patch, ksize=31)
+                    else:
+                        out = mosaic.pixel_mosaic(patch, block_size=self.block)
+                    img = _bgr_patch_to_qimage(out)
+                except Exception:
+                    # Skip bad patch but keep the rest of the frame alive.
+                    continue
+                xd = int(round(x * self.sx))
+                yd = int(round(y * self.sy))
+                wd = max(1, int(round(w * self.sx)))
+                hd = max(1, int(round(h * self.sy)))
+                layers.append((QRect(xd, yd, wd, hd), img))
+        finally:
+            # Always emit so _pending can clear in _apply_layers.
+            self.signals.ready.emit(self.key, layers)
 
 
 class FrameCoordinator(QObject):
@@ -543,7 +558,7 @@ class FrameCoordinator(QObject):
                             "[betasafe]",
                             f"screen={idx}",
                             f"rects={before_adult}->{after_adult}",
-                            f"layers={len(layers)}",
+                            f"layers={len(self._last_layers.get(key, []))}",
                             f"adult_gate={'on' if self.uses_adult_filter else 'off'}",
                             f"hf={'yes' if bool(config.ADULT_HF_MODEL) else 'no'}",
                             f"onnx={'yes' if bool(config.ADULT_ONNX_PATH) else 'no'}",
