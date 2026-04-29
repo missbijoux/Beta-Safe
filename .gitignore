@@ -13,6 +13,7 @@ __pycache__/
 .eggs/
 dist/
 build/
+packaging/out/
 
 # Environment / secrets
 .env

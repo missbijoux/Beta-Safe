@@ -1,0 +1,54 @@
+BetaSafe — packaging (v1)
+=========================
+
+Prereqs
+-------
+- Python 3.10+ venv with dependencies:
+    pip install -r requirements.txt -r requirements-build.txt
+- Branding assets under packaging/ (icons + optional wizard/background art).
+
+PyInstaller (Windows + macOS)
+-------------------------------
+From the repo root (betasafe-custom):
+
+  Windows (PowerShell):
+    packaging\scripts\build_pyinstaller.ps1
+
+  macOS / Linux shell:
+    chmod +x packaging/scripts/build_pyinstaller.sh
+    ./packaging/scripts/build_pyinstaller.sh
+
+Outputs:
+  Windows: dist\BetaSafe\BetaSafe.exe  (+ supporting DLLs in that folder)
+  macOS:   dist/BetaSafe.app
+
+Windows installer (Inno Setup 6)
+--------------------------------
+1) Build PyInstaller output (above).
+2) Optional: generate Inno BMPs from your PNG wizard art:
+     packaging\scripts\prepare_inno_wizard_images.ps1
+3) Install Inno Setup 6, then:
+     packaging\scripts\build_installer_windows.ps1
+
+Installer EXE is written under packaging\out\installer\ (see BetaSafe.iss).
+
+macOS DMG
+---------
+After PyInstaller on a Mac:
+
+  chmod +x packaging/scripts/make_dmg.sh
+  ./packaging/scripts/make_dmg.sh
+
+Uses packaging/assets/dmg/background.png if present (also checks common typo backgound.png).
+Install create-dmg for a nicer layout: brew install create-dmg
+
+Codesign + notarization (macOS)
+-------------------------------
+See packaging/scripts/macos_sign_and_notarize.sh — fill in env vars listed at the top.
+
+Notes
+-----
+- Hugging Face / Torch builds are much larger; keep optional ML deps out of the
+  default requirements.txt if you want smaller installers.
+- LSUIElement is set in the PyInstaller spec so the frozen app is agent-style (tray-first);
+  change info_plist in betasafe.spec if you want a Dock icon.

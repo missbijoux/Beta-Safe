@@ -1,0 +1,3 @@
+# Frozen builds (PyInstaller). Install in your venv alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-build.txt
+pyinstaller>=6.3

@@ -1,4 +1,4 @@
-"""Entry: python -m src.main (from betasafe-custom directory)."""
+"""Entry: ``python -m src`` or ``python -m src.main`` (from repo root)."""
 
 from __future__ import annotations
 
