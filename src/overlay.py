@@ -297,6 +297,7 @@ class FrameCoordinator(QObject):
         self._timer = None
         self._frame_counters: dict[int, int] = {}
         self._proc_rect_cache: dict[int, list[tuple[int, int, int, int]]] = {}
+        self._adult_rect_cache: dict[int, list[tuple[int, int, int, int]]] = {}
         self._prev_proc: dict[int, np.ndarray | None] = {}
         self._last_layers: dict[int, list[tuple[QRect, QImage]]] = {}
         self._inactive_counters: dict[int, int] = {}
@@ -381,6 +382,7 @@ class FrameCoordinator(QObject):
                     self._proc_rect_cache.pop(key, None)
                     self._prev_proc.pop(key, None)
                     self._last_layers.pop(key, None)
+                    self._adult_rect_cache.pop(key, None)
                     self._frame_counters.pop(key, None)
                     self._inactive_counters.pop(key, None)
                     continue
@@ -493,17 +495,20 @@ class FrameCoordinator(QObject):
                 if self.uses_adult_filter:
                     # Run expensive HF/ONNX scoring off the UI thread.
                     # Only apply scores that match *this* frame; otherwise stale rects
-                    # mosaic wrong UI (menus/text) when the worker queue drops jobs.
+                    # can mosaic wrong UI (menus/text). If worker is busy or stale,
+                    # reuse the last known-good adult-filtered rects to avoid flicker.
                     sig = frame_signature(bgr_proc)
-                    submitted = self._adult_worker.submit(
-                        key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig
-                    )
+                    self._adult_worker.submit(key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig)
                     pair = self._adult_worker.get_latest(key)
-                    if not submitted or pair is None:
-                        rects_proc = []
+                    if pair is None:
+                        rects_proc = self._adult_rect_cache.get(key, [])
                     else:
                         psig, kept = pair
-                        rects_proc = kept if psig == sig else []
+                        if psig == sig:
+                            rects_proc = kept
+                            self._adult_rect_cache[key] = kept
+                        else:
+                            rects_proc = self._adult_rect_cache.get(key, [])
                 after_adult = len(rects_proc)
                 rects_proc = detect.filter_xywh_max_area_fraction(
                     rects_proc, proc_w, proc_h, proc_area_cap
