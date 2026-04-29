@@ -35,26 +35,51 @@ class AdultHfClassifier:
 
         rgb = bgr_patch[:, :, ::-1]
         img = Image.fromarray(rgb)
-        out: Any = self._pipe(img, top_k=4)
+        out: Any = self._pipe(img, top_k=8)
         if not isinstance(out, list) or not out:
             return 0.0
 
-        # Prefer explicit "nsfw" score if present.
-        nsfw_score = None
-        best_keyword = 0.0
+        label_scores: dict[str, float] = {}
         for item in out:
             if not isinstance(item, dict):
                 continue
-            label = str(item.get("label", "")).lower()
+            label = str(item.get("label", "")).lower().strip()
+            if not label:
+                continue
             score = float(item.get("score", 0.0))
-            if label.strip() == "nsfw":
-                nsfw_score = score if nsfw_score is None else max(nsfw_score, score)
-            if any(k in label for k in ("nsfw", "adult", "porn", "sexy", "explicit", "nude")):
-                best_keyword = max(best_keyword, score)
-        if nsfw_score is not None:
-            return float(nsfw_score)
-        if best_keyword > 0.0:
-            return float(best_keyword)
+            label_scores[label] = max(label_scores.get(label, 0.0), score)
 
-        # Fallback: assume the model's top prediction is meaningful.
-        return float(out[0].get("score", 0.0))
+        if "nsfw" in label_scores:
+            return float(label_scores["nsfw"])
+
+        nsfw_like = (
+            "nsfw",
+            "adult",
+            "porn",
+            "sexy",
+            "explicit",
+            "nude",
+            "hentai",
+            "erotic",
+        )
+        best_kw = 0.0
+        for lab, sc in label_scores.items():
+            if any(k in lab for k in nsfw_like):
+                best_kw = max(best_kw, sc)
+        if best_kw > 0.0:
+            return float(best_kw)
+
+        # Binary export (e.g. normal vs nsfw): return the *unsafe* class score, never blindly
+        # use top-1 (often "normal" with the highest probability on safe UI).
+        if len(label_scores) == 2:
+            labs = list(label_scores.keys())
+            a, b = labs[0], labs[1]
+            safe_tokens = ("normal", "safe", "neutral", "sfw", "drawing", "clean", "benign")
+            a_safe = any(t in a for t in safe_tokens)
+            b_safe = any(t in b for t in safe_tokens)
+            if a_safe and not b_safe:
+                return float(label_scores[b])
+            if b_safe and not a_safe:
+                return float(label_scores[a])
+
+        return 0.0

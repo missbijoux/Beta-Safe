@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QStyle, QSystemT
 
 from . import capture, config, detect, mosaic
 from .dxg_capture import DxgiOutputPool
-from .adult_worker import AdultGateWorker
+from .adult_worker import AdultGateWorker, frame_signature
 from .pipeline_thread import PipelineConfig, PipelineThread
 from .nsfw_regions import adult_filtering_enabled, filter_rects_adult
 
@@ -492,9 +492,18 @@ class FrameCoordinator(QObject):
                 before_adult = len(rects_proc)
                 if self.uses_adult_filter:
                     # Run expensive HF/ONNX scoring off the UI thread.
-                    self._adult_worker.submit(key=key, rects=rects_proc, bgr_proc=bgr_proc)
-                    latest = self._adult_worker.get_latest(key)
-                    rects_proc = latest if latest is not None else []
+                    # Only apply scores that match *this* frame; otherwise stale rects
+                    # mosaic wrong UI (menus/text) when the worker queue drops jobs.
+                    sig = frame_signature(bgr_proc)
+                    submitted = self._adult_worker.submit(
+                        key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig
+                    )
+                    pair = self._adult_worker.get_latest(key)
+                    if not submitted or pair is None:
+                        rects_proc = []
+                    else:
+                        psig, kept = pair
+                        rects_proc = kept if psig == sig else []
                 after_adult = len(rects_proc)
                 rects_proc = detect.filter_xywh_max_area_fraction(
                     rects_proc, proc_w, proc_h, proc_area_cap

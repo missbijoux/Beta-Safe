@@ -134,6 +134,9 @@ Common ones:
 | `BETASAFE_MAX_CENSOR_AREA` | Ignore rectangles larger than this fraction of the screen (default 0.92) to avoid accidental full-screen mosaic. |
 | `BETASAFE_HIDE_DELAY_MS` | Delay before hiding empty overlay layers (reduces flicker). |
 | `BETASAFE_ADULT_HF_MODEL` | Hugging Face model id for optional NSFW gating (requires extra installs). |
+| `BETASAFE_ADULT_ONNX_THRESHOLD` | Score threshold for HF/ONNX gating (despite the name). **Higher** = fewer mosaics (stricter). Typical HF range ~`0.85`–`0.95` after tuning. |
+| `BETASAFE_ADULT_MAX_ONNX_CROPS` | How many of the **largest** candidate boxes get the classifier each frame (default 8). If real content is in **smaller** regions, try **`6`–`12`**. |
+| `BETASAFE_ADULT_MIN_RECTS` | If fewer heuristic rects exist than this, the app adds a **tile grid** for gating (more CPU, more random tiles). Set **`0`** to disable that grid and reduce “random” boxes. |
 | `BETASAFE_ADULT_ONNX_PATH` | Path to an ONNX NSFW classifier (alternative to HF). |
 | `BETASAFE_START_PAUSED` | If set truthy, starts without drawing overlays (useful for testing). |
 | `BETASAFE_AUTO_QUIT_MS` | Quit automatically after N milliseconds (debug / CI). |
@@ -168,6 +171,7 @@ A ready-made workflow file is kept at **`packaging/ci/build-pyinstaller.yml`**. 
 | Problem | Things to try |
 |---------|----------------|
 | **`pip install` fails on PySide6** with `SyntaxError` in a `__init__.tmpl.py` file under `PySide6/scripts/...` | You are almost certainly on **Python 3.9 from Xcode Command Line Tools**. **Delete the broken `.venv`**, install **Python 3.10+** (Homebrew or python.org), recreate the venv with that interpreter, and `pip install` again. **Temporary workaround** on older pip: upgrade pip then `pip install --no-compile -r requirements.txt` (skips byte-compiling files in wheels). |
+| **Adult gate mosaics the wrong UI** (menus, random text) | Use lowercase **`export`** for every variable (macOS/zsh). Set **`BETASAFE_ADULT_MIN_RECTS=0`** to stop extra grid tiles. Raise **`BETASAFE_ADULT_ONNX_THRESHOLD`** (e.g. `0.9`) to mosaic less. Optionally run with **`BETASAFE_DEBUG_ADULT=1`** and **`BETASAFE_DEBUG_ADULT_WORKER=1`** once to see scores in the terminal. |
 | Tray says “no icon” or icon is blank | Known quirk on some setups; the menu still works. You can add a proper icon in Qt later. |
 | High CPU / fans | Lower `BETASAFE_TARGET_FPS`, raise `BETASAFE_DETECT_EVERY`, lower `BETASAFE_MAX_PROCESS_WIDTH`. |
 | Random small mosaics | Tighten adult threshold or disable extra tile candidates; see past tuning notes in `src/detect.py` / `src/config.py`. |
