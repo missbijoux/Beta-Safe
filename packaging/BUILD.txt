@@ -46,6 +46,16 @@ Codesign + notarization (macOS)
 -------------------------------
 See packaging/scripts/macos_sign_and_notarize.sh — fill in env vars listed at the top.
 
+GitHub Actions
+--------------
+The workflow file lives at packaging/ci/build-pyinstaller.yml (same content as
+.github/workflows would use). Copy it to:
+
+  .github/workflows/build-pyinstaller.yml
+
+from your machine, then commit and push (GitHub requires a token with the
+``workflow`` scope to modify workflow files via some HTTPS integrations).
+
 Notes
 -----
 - Hugging Face / Torch builds are much larger; keep optional ML deps out of the
