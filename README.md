@@ -11,7 +11,7 @@ It is meant for people who want an extra layer of visual privacy on their own ma
 | Requirement | Notes |
 |-------------|--------|
 | **Windows 10/11** or **macOS** | Multi-monitor setups are supported. |
-| **Python 3.10+** | Only if you run from source (see below). |
+| **Python 3.10+** | Only if you run from source (see below). **Avoid Apple’s “Command Line Tools” Python 3.9** (`/Library/Developer/CommandLineTools/...`) for the venv—PySide6’s wheel includes template files that break under that Python’s install step. Use **3.10+** from [python.org](https://www.python.org/downloads/) or **Homebrew** (`brew install python@3.12`). |
 | **Administrator / special permissions** | Usually **not** required for normal use. macOS may ask for **Screen Recording** so the app can see the screen to protect it. |
 
 ---
@@ -26,12 +26,31 @@ Clone this repository (or download and unzip it), then open a terminal **in the 
 
 ### 2. Create a virtual environment (recommended)
 
-**macOS / Linux:**
+**Check your Python version first** (must be **3.10 or newer**):
+
+```bash
+python3 --version
+```
+
+On macOS, if you see **3.9.x** and the path mentions **CommandLineTools**, install a newer Python, then use **that** binary for the venv:
+
+```bash
+# Example: Homebrew (Apple Silicon default prefix shown; Intel is often /usr/local)
+brew install python@3.12
+/opt/homebrew/bin/python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+```
+
+If `python3.12` is already on your `PATH`, you can use `python3.12 -m venv .venv` instead.
+
+**macOS / Linux** (when `python3` is already 3.10+):
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
@@ -40,7 +59,7 @@ pip install -r requirements.txt
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
@@ -58,14 +77,18 @@ python3 -m src
 python -m src
 ```
 
-You should see a **tray icon**. Use **right‑click** (or equivalent) on the icon for:
+There is **no main window** by design: the app draws overlays on your displays and is controlled from the **menu bar / system tray**.
+
+You should see a **tray icon** (a blue square with “B”, or your `packaging/icons` branding if present). **Click** the icon (on some systems **right‑click** or **Control‑click**) to open the menu:
 
 - **Pause / resume** (if you enabled optional hotkeys, **F10** may also toggle pause)
 - **Mosaic** or **Blur** mode
 - **Click-through** (whether mouse clicks pass through the overlay)
-- **Quit**
+- **Quit** — this exits the app completely
 
-If you do not see the tray icon, your desktop environment may hide “background” apps—check the **^** / chevron area on the Windows taskbar, or the menu bar extras on macOS.
+**If you cannot find the tray icon:** on Windows use the **^** show-hidden-icons chevron; on macOS check the **right side of the menu bar** (near clock, Wi‑Fi, battery). Last resort: **Activity Monitor** (macOS) or **Task Manager** (Windows) → quit the **Python** / **BetaSafe** process.
+
+**If you started from Terminal:** closing the Terminal window may **not** stop BetaSafe while the tray app is still running—use **Quit** from the tray menu first.
 
 ---
 
@@ -144,6 +167,7 @@ A ready-made workflow file is kept at **`packaging/ci/build-pyinstaller.yml`**. 
 
 | Problem | Things to try |
 |---------|----------------|
+| **`pip install` fails on PySide6** with `SyntaxError` in a `__init__.tmpl.py` file under `PySide6/scripts/...` | You are almost certainly on **Python 3.9 from Xcode Command Line Tools**. **Delete the broken `.venv`**, install **Python 3.10+** (Homebrew or python.org), recreate the venv with that interpreter, and `pip install` again. **Temporary workaround** on older pip: upgrade pip then `pip install --no-compile -r requirements.txt` (skips byte-compiling files in wheels). |
 | Tray says “no icon” or icon is blank | Known quirk on some setups; the menu still works. You can add a proper icon in Qt later. |
 | High CPU / fans | Lower `BETASAFE_TARGET_FPS`, raise `BETASAFE_DETECT_EVERY`, lower `BETASAFE_MAX_PROCESS_WIDTH`. |
 | Random small mosaics | Tighten adult threshold or disable extra tile candidates; see past tuning notes in `src/detect.py` / `src/config.py`. |

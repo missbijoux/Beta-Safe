@@ -1,3 +1,4 @@
+# Use Python 3.10+ (Apple CLT Python 3.9 breaks PySide6 wheel install — see README).
 PySide6>=6.6
 opencv-python-headless>=4.8
 numpy>=1.24

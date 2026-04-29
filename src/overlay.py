@@ -4,20 +4,68 @@ from __future__ import annotations
 
 import sys
 import threading
+from pathlib import Path
 
 import cv2
 import mss
 import numpy as np
 import os
 from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal, QRunnable, QThreadPool, Slot
-from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QIcon, QImage, QPainter
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QWidget
+from PySide6.QtGui import QAction, QColor, QCursor, QFont, QGuiApplication, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QStyle, QSystemTrayIcon, QWidget
 
 from . import capture, config, detect, mosaic
 from .dxg_capture import DxgiOutputPool
 from .adult_worker import AdultGateWorker
 from .pipeline_thread import PipelineConfig, PipelineThread
 from .nsfw_regions import adult_filtering_enabled, filter_rects_adult
+
+
+def _repo_root() -> Path:
+    """Directory that contains ``src/`` (repo root when running from source)."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _tray_icon() -> QIcon:
+    """Prefer packaged branding icons; otherwise a small built-in pixmap (avoids empty tray)."""
+    root = _repo_root()
+    if sys.platform == "darwin":
+        for p in (root / "packaging" / "icons" / "app.icns", root / "packaging" / "icons" / "app.ico"):
+            if p.is_file():
+                ic = QIcon(str(p))
+                if not ic.isNull():
+                    return ic
+    else:
+        for p in (root / "packaging" / "icons" / "app.ico", root / "packaging" / "icons" / "app.icns"):
+            if p.is_file():
+                ic = QIcon(str(p))
+                if not ic.isNull():
+                    return ic
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        for p in (exe_dir / "app.ico", exe_dir / "app.icns"):
+            if p.is_file():
+                ic = QIcon(str(p))
+                if not ic.isNull():
+                    return ic
+
+    app_inst = QApplication.instance()
+    if app_inst is not None:
+        style = app_inst.style()
+        if style is not None:
+            pm = style.standardPixmap(QStyle.StandardPixmap.SP_DialogYesButton)
+            if not pm.isNull():
+                return QIcon(pm)
+
+    pm = QPixmap(64, 64)
+    pm.fill(QColor(70, 110, 180))
+    painter = QPainter(pm)
+    painter.setPen(Qt.GlobalColor.white)
+    painter.setFont(QFont("Helvetica", 28, QFont.Weight.Bold))
+    painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "B")
+    painter.end()
+    return QIcon(pm)
 
 
 def _bgr_patch_to_qimage(bgr: np.ndarray) -> QImage:
@@ -565,7 +613,7 @@ def run_app() -> int:
     bridge.toggle_pause.connect(toggle_pause)
     _start_hotkeys(bridge)
 
-    tray = QSystemTrayIcon(QIcon(), app)
+    tray = QSystemTrayIcon(_tray_icon(), app)
     menu = QMenu()
 
     act_pause = QAction("Pause / resume (F10)", menu)
