@@ -84,6 +84,8 @@ class PipelineThread:
             interval = max(0.01, config.FRAME_INTERVAL_MS / 1000.0)
             prev_proc: np.ndarray | None = None
             rects_cache: list[tuple[int, int, int, int]] = []
+            adult_hold_until_ms = 0.0
+            adult_hold_rects: list[tuple[int, int, int, int]] = []
             frame = 0
 
             with mss.mss() as sct:
@@ -161,6 +163,16 @@ class PipelineThread:
                     rects = detect.filter_xywh_max_area_fraction(
                         rects, proc_w, proc_h, proc_area_cap
                     )
+
+                    hold_ms = float(getattr(config, "ADULT_HOLD_MS", 0))
+                    if hold_ms > 0:
+                        now_ms = time.time() * 1000.0
+                        if rects:
+                            adult_hold_rects = list(rects)
+                            adult_hold_until_ms = now_ms + hold_ms
+                        else:
+                            if now_ms < adult_hold_until_ms:
+                                rects = adult_hold_rects
 
                     # Build layers.
                     sx = ww / float(proc_w)

@@ -70,6 +70,11 @@ BETASAFE_ADULT_TILE (default 96)
 
 BETASAFE_ADULT_MIN_RECTS (default 6)
     If fewer than this many candidate rects are found, tile candidates are added.
+
+BETASAFE_ADULT_HOLD_MS (default 900)
+    When the adult gate triggers, keep mosaicing for this many milliseconds
+    even if the next frame(s) temporarily score below threshold (reduces
+    1-frame flicker).
 """
 
 from __future__ import annotations
@@ -139,4 +144,5 @@ ADULT_COMBINE = os.environ.get("BETASAFE_ADULT_COMBINE", "any").strip().lower()
 ADULT_MAX_ONNX_CROPS = _env_int("BETASAFE_ADULT_MAX_ONNX_CROPS", 8, lo=1, hi=256)
 ADULT_TILE = _env_int("BETASAFE_ADULT_TILE", 96, lo=32, hi=256)
 ADULT_MIN_RECTS = _env_int("BETASAFE_ADULT_MIN_RECTS", 6, lo=0, hi=128)
+ADULT_HOLD_MS = _env_int("BETASAFE_ADULT_HOLD_MS", 900, lo=0, hi=10000)
 MAX_CENSOR_AREA_RATIO = _env_float("BETASAFE_MAX_CENSOR_AREA", 0.92)

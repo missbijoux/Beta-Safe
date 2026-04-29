@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -193,12 +194,6 @@ class CensorOverlay(QWidget):
             painter.fillRect(self.rect(), QColor(0, 255, 255, 28))
         for rect, img in self._layers:
             if img.isNull():
-                # Fallback: if patch->QImage conversion fails, still draw an opaque
-                # block so protection remains visible instead of silently disappearing.
-                painter.fillRect(rect, QColor(0, 0, 0, 220))
-                if self._debug_draw:
-                    painter.setPen(QColor(255, 0, 0, 220))
-                    painter.drawRect(rect)
                 continue
             painter.drawImage(rect, img)
             if self._debug_draw:
@@ -242,30 +237,21 @@ class _LayerJob(QRunnable):
 
     def run(self) -> None:
         layers: list[tuple[QRect, QImage]] = []
-        try:
-            for x, y, w, h in self.rects_proc:
-                if w <= 2 or h <= 2:
-                    continue
-                patch = self.bgr_proc[y : y + h, x : x + w]
-                if patch.size == 0:
-                    continue
-                try:
-                    if self.mode == "blur":
-                        out = mosaic.gaussian_blur(patch, ksize=31)
-                    else:
-                        out = mosaic.pixel_mosaic(patch, block_size=self.block)
-                    img = _bgr_patch_to_qimage(out)
-                except Exception:
-                    # Skip bad patch but keep the rest of the frame alive.
-                    continue
-                xd = int(round(x * self.sx))
-                yd = int(round(y * self.sy))
-                wd = max(1, int(round(w * self.sx)))
-                hd = max(1, int(round(h * self.sy)))
-                layers.append((QRect(xd, yd, wd, hd), img))
-        finally:
-            # Always emit so _pending can clear in _apply_layers.
-            self.signals.ready.emit(self.key, layers)
+        for x, y, w, h in self.rects_proc:
+            if w <= 2 or h <= 2:
+                continue
+            patch = self.bgr_proc[y : y + h, x : x + w]
+            if self.mode == "blur":
+                out = mosaic.gaussian_blur(patch, ksize=31)
+            else:
+                out = mosaic.pixel_mosaic(patch, block_size=self.block)
+            img = _bgr_patch_to_qimage(out)
+            xd = int(round(x * self.sx))
+            yd = int(round(y * self.sy))
+            wd = max(1, int(round(w * self.sx)))
+            hd = max(1, int(round(h * self.sy)))
+            layers.append((QRect(xd, yd, wd, hd), img))
+        self.signals.ready.emit(self.key, layers)
 
 
 class FrameCoordinator(QObject):
@@ -312,7 +298,8 @@ class FrameCoordinator(QObject):
         self._timer = None
         self._frame_counters: dict[int, int] = {}
         self._proc_rect_cache: dict[int, list[tuple[int, int, int, int]]] = {}
-        self._adult_rect_cache: dict[int, list[tuple[int, int, int, int]]] = {}
+        self._adult_hold_until_ms: dict[int, float] = {}
+        self._adult_hold_rects: dict[int, list[tuple[int, int, int, int]]] = {}
         self._prev_proc: dict[int, np.ndarray | None] = {}
         self._last_layers: dict[int, list[tuple[QRect, QImage]]] = {}
         self._inactive_counters: dict[int, int] = {}
@@ -397,7 +384,8 @@ class FrameCoordinator(QObject):
                     self._proc_rect_cache.pop(key, None)
                     self._prev_proc.pop(key, None)
                     self._last_layers.pop(key, None)
-                    self._adult_rect_cache.pop(key, None)
+                    self._adult_hold_until_ms.pop(key, None)
+                    self._adult_hold_rects.pop(key, None)
                     self._frame_counters.pop(key, None)
                     self._inactive_counters.pop(key, None)
                     continue
@@ -510,52 +498,32 @@ class FrameCoordinator(QObject):
                 if self.uses_adult_filter:
                     # Run expensive HF/ONNX scoring off the UI thread.
                     # Only apply scores that match *this* frame; otherwise stale rects
-                    # can mosaic wrong UI (menus/text). If worker is busy or stale,
-                    # reuse the last known-good adult-filtered rects to avoid flicker.
-                    # Keep a snapshot of candidate rects for the *current* frame.
-                    # If adult-worker results are stale (queue lag), we can still
-                    # decide whether the kept rects are plausibly relevant by
-                    # checking overlap with these candidates.
-                    candidates_for_frame = list(rects_proc)
-
+                    # mosaic wrong UI (menus/text) when the worker queue drops jobs.
                     sig = frame_signature(bgr_proc)
-                    self._adult_worker.submit(
+                    submitted = self._adult_worker.submit(
                         key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig
                     )
                     pair = self._adult_worker.get_latest(key)
-                    if pair is None:
-                        rects_proc = self._adult_rect_cache.get(key, [])
+                    if not submitted or pair is None:
+                        rects_proc = []
                     else:
                         psig, kept = pair
-                        if not kept:
-                            rects_proc = self._adult_rect_cache.get(key, [])
-                        else:
-                            # Compute IoU between a kept rect and current candidates.
-                            def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
-                                ax, ay, aw, ah = a
-                                bx, by, bw, bh = b
-                                x1 = max(ax, bx)
-                                y1 = max(ay, by)
-                                x2 = min(ax + aw, bx + bw)
-                                y2 = min(ay + ah, by + bh)
-                                inter = max(0, x2 - x1) * max(0, y2 - y1)
-                                union = aw * ah + bw * bh - inter
-                                return inter / union if union > 0 else 0.0
-
-                            overlaps = any(
-                                _iou(k, c) > 0.35 for k in kept for c in candidates_for_frame
-                            )
-
-                            if psig == sig or overlaps:
-                                rects_proc = kept
-                                # Update cache when results appear relevant.
-                                self._adult_rect_cache[key] = kept
-                            else:
-                                rects_proc = self._adult_rect_cache.get(key, [])
+                        rects_proc = kept if psig == sig else []
                 after_adult = len(rects_proc)
                 rects_proc = detect.filter_xywh_max_area_fraction(
                     rects_proc, proc_w, proc_h, proc_area_cap
                 )
+
+                hold_ms = float(getattr(config, "ADULT_HOLD_MS", 0))
+                if hold_ms > 0:
+                    now_ms = time.monotonic() * 1000.0
+                    if rects_proc:
+                        self._adult_hold_rects[key] = list(rects_proc)
+                        self._adult_hold_until_ms[key] = now_ms + hold_ms
+                    else:
+                        until = self._adult_hold_until_ms.get(key, 0.0)
+                        if now_ms < until:
+                            rects_proc = self._adult_hold_rects.get(key, [])
 
                 # Build mosaic/blur patches off the UI thread to prevent freezes.
                 if key not in self._pending:
@@ -586,7 +554,7 @@ class FrameCoordinator(QObject):
                             "[betasafe]",
                             f"screen={idx}",
                             f"rects={before_adult}->{after_adult}",
-                            f"layers={len(self._last_layers.get(key, []))}",
+                            f"layers={len(layers)}",
                             f"adult_gate={'on' if self.uses_adult_filter else 'off'}",
                             f"hf={'yes' if bool(config.ADULT_HF_MODEL) else 'no'}",
                             f"onnx={'yes' if bool(config.ADULT_ONNX_PATH) else 'no'}",
