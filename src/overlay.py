@@ -512,18 +512,46 @@ class FrameCoordinator(QObject):
                     # Only apply scores that match *this* frame; otherwise stale rects
                     # can mosaic wrong UI (menus/text). If worker is busy or stale,
                     # reuse the last known-good adult-filtered rects to avoid flicker.
+                    # Keep a snapshot of candidate rects for the *current* frame.
+                    # If adult-worker results are stale (queue lag), we can still
+                    # decide whether the kept rects are plausibly relevant by
+                    # checking overlap with these candidates.
+                    candidates_for_frame = list(rects_proc)
+
                     sig = frame_signature(bgr_proc)
-                    self._adult_worker.submit(key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig)
+                    self._adult_worker.submit(
+                        key=key, rects=rects_proc, bgr_proc=bgr_proc, sig=sig
+                    )
                     pair = self._adult_worker.get_latest(key)
                     if pair is None:
                         rects_proc = self._adult_rect_cache.get(key, [])
                     else:
                         psig, kept = pair
-                        if psig == sig:
-                            rects_proc = kept
-                            self._adult_rect_cache[key] = kept
-                        else:
+                        if not kept:
                             rects_proc = self._adult_rect_cache.get(key, [])
+                        else:
+                            # Compute IoU between a kept rect and current candidates.
+                            def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
+                                ax, ay, aw, ah = a
+                                bx, by, bw, bh = b
+                                x1 = max(ax, bx)
+                                y1 = max(ay, by)
+                                x2 = min(ax + aw, bx + bw)
+                                y2 = min(ay + ah, by + bh)
+                                inter = max(0, x2 - x1) * max(0, y2 - y1)
+                                union = aw * ah + bw * bh - inter
+                                return inter / union if union > 0 else 0.0
+
+                            overlaps = any(
+                                _iou(k, c) > 0.35 for k in kept for c in candidates_for_frame
+                            )
+
+                            if psig == sig or overlaps:
+                                rects_proc = kept
+                                # Update cache when results appear relevant.
+                                self._adult_rect_cache[key] = kept
+                            else:
+                                rects_proc = self._adult_rect_cache.get(key, [])
                 after_adult = len(rects_proc)
                 rects_proc = detect.filter_xywh_max_area_fraction(
                     rects_proc, proc_w, proc_h, proc_area_cap

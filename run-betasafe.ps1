@@ -3,7 +3,9 @@ param(
     [string]$Preset = "balanced",
     [string]$AdultOnnxPath = "",
     [string]$AdultHfModel = "",
-    [switch]$DebugAdult
+    [double]$AdultThreshold = -1,
+    [switch]$DebugAdult,
+    [switch]$VerboseLogs
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,7 +90,7 @@ elseif ($AdultHfModel) {
     # HF models tend to produce lower raw scores; use a friendlier default
     # threshold when presets left the ONNX-style threshold at a strict value.
     if (-not $env:BETASAFE_ADULT_ONNX_THRESHOLD -or $env:BETASAFE_ADULT_ONNX_THRESHOLD -ge 0.9) {
-        $env:BETASAFE_ADULT_ONNX_THRESHOLD = "0.35"
+        $env:BETASAFE_ADULT_ONNX_THRESHOLD = "0.18"
     }
 }
 else {
@@ -100,6 +102,15 @@ if ($DebugAdult) {
     $env:BETASAFE_DEBUG_ADULT = "1"
     $env:BETASAFE_DEBUG_ADULT_WORKER = "1"
     Write-Host "Adult debug logs: ON"
+}
+if ($VerboseLogs) {
+    $env:BETASAFE_DEBUG = "1"
+    $env:BETASAFE_DEBUG_PIPELINE = "1"
+    Write-Host "Verbose pipeline logs: ON"
+}
+
+if ($AdultThreshold -ge 0) {
+    $env:BETASAFE_ADULT_ONNX_THRESHOLD = ("{0:0.###}" -f $AdultThreshold)
 }
 
 Write-Host ""
@@ -117,4 +128,4 @@ if ($env:BETASAFE_ADULT_HF_MODEL) {
 }
 Write-Host ""
 
-python -m src
+python -u -m src

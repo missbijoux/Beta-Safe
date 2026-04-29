@@ -48,6 +48,16 @@ def filter_rects_adult(
 
     ordered = sorted(rects, key=lambda r: r[2] * r[3], reverse=True)
     max_onnx = int(config.ADULT_MAX_ONNX_CROPS)
+    model_indices: set[int] = set()
+    if use_model and max_onnx > 0 and ordered:
+        if len(ordered) <= max_onnx:
+            model_indices = set(range(len(ordered)))
+        else:
+            # Sample score targets across the full size-ranked list (large + small).
+            # Previous logic scored only the first N (largest) rectangles and missed
+            # smaller/localized adult regions.
+            picks = np.linspace(0, len(ordered) - 1, num=max_onnx, dtype=np.int32)
+            model_indices = {int(p) for p in picks.tolist()}
 
     kept: list[tuple[int, int, int, int]] = []
     debug_adult = os.environ.get("BETASAFE_DEBUG_ADULT", "").strip() not in ("", "0", "false", "off")
@@ -63,7 +73,7 @@ def filter_rects_adult(
             continue
 
         onnx_s = 0.0
-        if use_model and j < max_onnx:
+        if use_model and j in model_indices:
             try:
                 onnx_s = float(clf.score_positive(patch))
             except Exception:
@@ -80,7 +90,7 @@ def filter_rects_adult(
             b = skin_s >= float(config.ADULT_SKIN_THRESHOLD)
             ok = (a and b) if combine == "all" else (a or b)
         elif use_model:
-            if j < max_onnx:
+            if j in model_indices:
                 ok = onnx_s >= float(config.ADULT_ONNX_THRESHOLD)
             else:
                 ok = skin_s >= float(config.ADULT_SKIN_THRESHOLD) if use_skin else False
