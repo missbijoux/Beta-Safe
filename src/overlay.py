@@ -550,15 +550,19 @@ class FrameCoordinator(QObject):
                 if self._debug and idx == active_idx:
                     self._debug_tick += 1
                     if self._debug_tick % 20 == 0:
+                        last_n = len(self._last_layers.get(key, []))
                         print(
                             "[betasafe]",
                             f"screen={idx}",
                             f"rects={before_adult}->{after_adult}",
-                            f"layers={len(layers)}",
+                            f"mosaic_rects={len(rects_proc)}",
+                            f"last_layers={last_n}",
+                            f"pending={'yes' if key in self._pending else 'no'}",
                             f"adult_gate={'on' if self.uses_adult_filter else 'off'}",
                             f"hf={'yes' if bool(config.ADULT_HF_MODEL) else 'no'}",
                             f"onnx={'yes' if bool(config.ADULT_ONNX_PATH) else 'no'}",
                             f"adult_worker_ready={'yes' if self._adult_worker.ready else 'no'}",
+                            flush=True,
                         )
 
     @Slot(object, object)

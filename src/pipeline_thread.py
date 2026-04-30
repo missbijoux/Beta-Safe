@@ -57,7 +57,13 @@ class PipelineThread:
         self._stop = threading.Event()
         self._t = threading.Thread(target=self._run, name=f"pipeline-{cfg.screen_idx}", daemon=True)
         self._adult: AdultScoreModel | None = None
-        self._debug = os.environ.get("BETASAFE_DEBUG_PIPELINE", "").strip() not in ("", "0", "false", "off")
+        def _truthy(name: str) -> bool:
+            return os.environ.get(name, "").strip() not in ("", "0", "false", "off")
+
+        # macOS uses this thread by default; BETASAFE_DEBUG alone used to only log _tick (unused).
+        self._debug = _truthy("BETASAFE_DEBUG_PIPELINE") or _truthy("BETASAFE_DEBUG") or _truthy(
+            "BETASAFE_SCAN_LOG"
+        )
 
     def start(self) -> None:
         self._t.start()
@@ -87,6 +93,12 @@ class PipelineThread:
             adult_hold_until_ms = 0.0
             adult_hold_rects: list[tuple[int, int, int, int]] = []
             frame = 0
+            last_scan_log_mono = 0.0
+            try:
+                scan_log_ms = int(os.environ.get("BETASAFE_SCAN_LOG_MS", "1000").strip() or "1000")
+            except ValueError:
+                scan_log_ms = 1000
+            scan_log_ms = max(200, min(30_000, scan_log_ms))
 
             with mss.mss() as sct:
                 while not self._stop.is_set():
@@ -158,6 +170,7 @@ class PipelineThread:
                         rects, proc_w, proc_h, proc_area_cap
                     )
 
+                    cand_before_adult = len(rects)
                     # Adult gate (runs in this background thread).
                     rects = filter_rects_adult(rects, bgr_proc, self._adult)
                     rects = detect.filter_xywh_max_area_fraction(
@@ -194,13 +207,22 @@ class PipelineThread:
                     self.signals.layers_ready.emit(self._cfg.overlay_key, layers)
                     prev_proc = bgr_proc
 
-                    if self._debug and frame % 30 == 0:
-                        print(
-                            "[betasafe][pipeline]",
-                            f"screen={self._cfg.screen_idx}",
-                            f"rects={len(rects)}",
-                            flush=True,
-                        )
+                    if self._debug:
+                        now_m = time.monotonic()
+                        if (now_m - last_scan_log_mono) * 1000.0 >= float(scan_log_ms):
+                            last_scan_log_mono = now_m
+                            dt_ms = (time.time() - t0) * 1000.0
+                            print(
+                                "[betasafe][scan]",
+                                f"screen={self._cfg.screen_idx}",
+                                f"candidates={cand_before_adult}",
+                                f"after_adult={len(rects)}",
+                                f"layers={len(layers)}",
+                                f"loop_ms={dt_ms:.0f}",
+                                f"adult_model={'yes' if self._adult is not None else 'no'}",
+                                f"detect_frame={(frame % config.DETECT_EVERY_N_FRAMES) == 0}",
+                                flush=True,
+                            )
 
                     dt = time.time() - t0
                     time.sleep(max(0.0, interval - dt))

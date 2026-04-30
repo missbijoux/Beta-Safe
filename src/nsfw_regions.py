@@ -15,6 +15,41 @@ class AdultScoreModel(Protocol):
     def score_positive(self, bgr_patch: np.ndarray) -> float: ...
 
 
+def _rects_priority_for_adult_model(
+    rects: list[tuple[int, int, int, int]], max_n: int
+) -> list[tuple[int, int, int, int]]:
+    """Pick up to *max_n* rects to run the expensive classifier on.
+
+    Previously only the *largest* regions were scored. Grid tiles (small) often
+    land at the end of an area-sorted list, so partial nudity was never scored
+    while unrelated large UI/image blocks were — wrong mosaics and misses.
+    """
+    if max_n <= 0:
+        return []
+    if len(rects) <= max_n:
+        return sorted(rects, key=lambda r: r[2] * r[3], reverse=True)
+    by_area = sorted(rects, key=lambda r: r[2] * r[3], reverse=True)
+    half = max(1, max_n // 2)
+    largest = by_area[:half]
+    smallest = by_area[-(max_n - half) :]
+    out: list[tuple[int, int, int, int]] = []
+    seen: set[tuple[int, int, int, int]] = set()
+    for r in largest + smallest:
+        if r in seen:
+            continue
+        seen.add(r)
+        out.append(r)
+    if len(out) < max_n:
+        for r in by_area:
+            if r in seen:
+                continue
+            seen.add(r)
+            out.append(r)
+            if len(out) >= max_n:
+                break
+    return out
+
+
 def adult_filtering_enabled(clf: AdultScoreModel | None) -> bool:
     """True when at least one adult-specific gate is actually available."""
     model_ready = (bool(config.ADULT_ONNX_PATH) or bool(config.ADULT_HF_MODEL)) and clf is not None
@@ -48,22 +83,13 @@ def filter_rects_adult(
 
     ordered = sorted(rects, key=lambda r: r[2] * r[3], reverse=True)
     max_onnx = int(config.ADULT_MAX_ONNX_CROPS)
-    model_indices: set[int] = set()
-    if use_model and max_onnx > 0 and ordered:
-        if len(ordered) <= max_onnx:
-            model_indices = set(range(len(ordered)))
-        else:
-            # Sample score targets across the full size-ranked list (large + small).
-            # Previous logic scored only the first N (largest) rectangles and missed
-            # smaller/localized adult regions.
-            picks = np.linspace(0, len(ordered) - 1, num=max_onnx, dtype=np.int32)
-            model_indices = {int(p) for p in picks.tolist()}
+    model_rects = set(_rects_priority_for_adult_model(rects, max_onnx))
 
     kept: list[tuple[int, int, int, int]] = []
     debug_adult = os.environ.get("BETASAFE_DEBUG_ADULT", "").strip() not in ("", "0", "false", "off")
     max_model_score = 0.0
     max_skin_score = 0.0
-    for j, (x, y, rw, rh) in enumerate(ordered):
+    for x, y, rw, rh in ordered:
         x = max(0, min(int(x), w - 1))
         y = max(0, min(int(y), h - 1))
         rw = max(1, min(int(rw), w - x))
@@ -73,7 +99,8 @@ def filter_rects_adult(
             continue
 
         onnx_s = 0.0
-        if use_model and j in model_indices:
+        score_with_model = use_model and (x, y, rw, rh) in model_rects
+        if score_with_model:
             try:
                 onnx_s = float(clf.score_positive(patch))
             except Exception:
@@ -90,7 +117,7 @@ def filter_rects_adult(
             b = skin_s >= float(config.ADULT_SKIN_THRESHOLD)
             ok = (a and b) if combine == "all" else (a or b)
         elif use_model:
-            if j in model_indices:
+            if score_with_model:
                 ok = onnx_s >= float(config.ADULT_ONNX_THRESHOLD)
             else:
                 ok = skin_s >= float(config.ADULT_SKIN_THRESHOLD) if use_skin else False

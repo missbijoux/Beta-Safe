@@ -75,6 +75,27 @@ BETASAFE_ADULT_HOLD_MS (default 900)
     When the adult gate triggers, keep mosaicing for this many milliseconds
     even if the next frame(s) temporarily score below threshold (reduces
     1-frame flicker).
+
+Debug / scan telemetry
+------------------------
+BETASAFE_DEBUG
+    Verbose coordinator logs when using the Qt timer path (Windows default).
+
+BETASAFE_DEBUG_PIPELINE
+    Verbose pipeline thread (grab timing). On macOS the capture pipeline runs
+    in a background thread; use this or BETASAFE_DEBUG / BETASAFE_SCAN_LOG.
+
+BETASAFE_SCAN_LOG
+    Periodic one-line scan summary from the pipeline (macOS default path).
+
+BETASAFE_SCAN_LOG_MS (default 1000)
+    Minimum milliseconds between scan log lines (200–30000).
+
+BETASAFE_DEBUG_ADULT
+    Logs max classifier score vs threshold each time the adult filter runs.
+
+BETASAFE_DEBUG_ADULT_WORKER
+    Logs timing inside the separate adult worker (Qt timer + worker path only).
 """
 
 from __future__ import annotations
