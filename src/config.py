@@ -55,6 +55,12 @@ BETASAFE_ADULT_ONNX_POS_CLASSES
     Comma-separated indices to treat as "positive" for multi-class outputs
     (e.g. ViT NSFW models with labels like drawings/hentai/neutral/porn/sexy).
     When set, the max softmax probability across these indices is used.
+BETASAFE_ADULT_ONNX_NORM (default "none")
+    Input normalization for the ONNX model:
+    - "none": scale RGB to [0,1] only
+    - "imagenet": additionally apply (x-mean)/std with ImageNet mean/std.
+    Many ViT-based ONNX exports expect ImageNet normalization; without it,
+    scores can be near-zero and miss adult content.
 
 BETASAFE_ADULT_SKIN_HEURISTIC (default off)
     Cheap, *very* error-prone skin-tone + texture proxy. Prefer the ONNX classifier.
@@ -162,6 +168,7 @@ ADULT_ONNX_PATH = os.environ.get("BETASAFE_ADULT_ONNX_PATH", "").strip()
 ADULT_ONNX_THRESHOLD = _env_float("BETASAFE_ADULT_ONNX_THRESHOLD", 0.72)
 ADULT_ONNX_POS_CLASS = _env_int("BETASAFE_ADULT_ONNX_POS_CLASS", 1, lo=0, hi=128)
 ADULT_ONNX_POS_CLASSES = os.environ.get("BETASAFE_ADULT_ONNX_POS_CLASSES", "").strip()
+ADULT_ONNX_NORM = os.environ.get("BETASAFE_ADULT_ONNX_NORM", "none").strip().lower()
 ADULT_SKIN_HEURISTIC = _env_bool("BETASAFE_ADULT_SKIN_HEURISTIC", False)
 ADULT_SKIN_THRESHOLD = _env_float("BETASAFE_ADULT_SKIN_THRESHOLD", 0.45)
 ADULT_COMBINE = os.environ.get("BETASAFE_ADULT_COMBINE", "any").strip().lower()

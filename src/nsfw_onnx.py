@@ -53,6 +53,7 @@ class AdultOnnxClassifier:
         self._in_w = self._static_dim(shp[3], self._in_h)
         self._pos_index = int(config.ADULT_ONNX_POS_CLASS)
         self._pos_indices = _parse_pos_indices(getattr(config, "ADULT_ONNX_POS_CLASSES", ""))
+        self._norm = (getattr(config, "ADULT_ONNX_NORM", "none") or "none").strip().lower()
 
     @staticmethod
     def _static_dim(val: object, fallback: int) -> int:
@@ -72,6 +73,11 @@ class AdultOnnxClassifier:
             return 0.0
         img = cv2.resize(bgr_patch, (self._in_w, self._in_h), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+        if self._norm == "imagenet":
+            # Common for ViT exports: normalize RGB in [0,1] using ImageNet stats.
+            mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)[None, None, :]
+            std = np.array([0.229, 0.224, 0.225], dtype=np.float32)[None, None, :]
+            rgb = (rgb - mean) / std
         blob = np.transpose(rgb, (2, 0, 1))[None, ...]
         out = self._session.run(None, {self._inp.name: blob})[0]
         return _parse_positive_probability(

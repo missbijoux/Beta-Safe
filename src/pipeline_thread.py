@@ -84,8 +84,25 @@ class PipelineThread:
             if config.ADULT_HF_MODEL or config.ADULT_ONNX_PATH:
                 try:
                     self._adult = self._load_adult()
-                except Exception:
+                    if self._debug:
+                        print(
+                            "[betasafe][pipeline] adult_model_loaded"
+                            if self._adult is not None
+                            else "[betasafe][pipeline] adult_model_none",
+                            f"hf={'yes' if bool(config.ADULT_HF_MODEL) else 'no'}",
+                            f"onnx={'yes' if bool(config.ADULT_ONNX_PATH) else 'no'}",
+                            flush=True,
+                        )
+                except Exception as e:
                     self._adult = None
+                    if self._debug:
+                        print(
+                            "[betasafe][pipeline] adult_model_failed",
+                            f"err={type(e).__name__}: {e}",
+                            f"hf={'yes' if bool(config.ADULT_HF_MODEL) else 'no'}",
+                            f"onnx={'yes' if bool(config.ADULT_ONNX_PATH) else 'no'}",
+                            flush=True,
+                        )
 
             interval = max(0.01, config.FRAME_INTERVAL_MS / 1000.0)
             prev_proc: np.ndarray | None = None
