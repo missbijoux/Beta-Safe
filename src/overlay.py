@@ -326,8 +326,11 @@ class FrameCoordinator(QObject):
                     cap_top=int(geo.top()),
                     cap_width=int(geo.width()),
                     cap_height=int(geo.height()),
-                    width=max(1, o.width()),
-                    height=max(1, o.height()),
+                    # Use the screen geometry size, not QWidget.width()/height().
+                    # On some platforms the widget may report 0x0 briefly during startup,
+                    # which would collapse all mosaic rects to near-invisible pixels.
+                    width=max(1, int(geo.width())),
+                    height=max(1, int(geo.height())),
                     mode=o.effect_mode(),
                     block=o.mosaic_block_size(),
                 )
