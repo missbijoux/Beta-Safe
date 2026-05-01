@@ -51,6 +51,10 @@ BETASAFE_ADULT_ONNX_PATH
 BETASAFE_ADULT_ONNX_THRESHOLD (default 0.72)
 BETASAFE_ADULT_ONNX_POS_CLASS (default 1)
     Which softmax index is the 'positive' class for ``(1,2)`` outputs.
+BETASAFE_ADULT_ONNX_POS_CLASSES
+    Comma-separated indices to treat as "positive" for multi-class outputs
+    (e.g. ViT NSFW models with labels like drawings/hentai/neutral/porn/sexy).
+    When set, the max softmax probability across these indices is used.
 
 BETASAFE_ADULT_SKIN_HEURISTIC (default off)
     Cheap, *very* error-prone skin-tone + texture proxy. Prefer the ONNX classifier.
@@ -157,6 +161,7 @@ ADULT_HF_MODEL = os.environ.get("BETASAFE_ADULT_HF_MODEL", "").strip()
 ADULT_ONNX_PATH = os.environ.get("BETASAFE_ADULT_ONNX_PATH", "").strip()
 ADULT_ONNX_THRESHOLD = _env_float("BETASAFE_ADULT_ONNX_THRESHOLD", 0.72)
 ADULT_ONNX_POS_CLASS = _env_int("BETASAFE_ADULT_ONNX_POS_CLASS", 1, lo=0, hi=128)
+ADULT_ONNX_POS_CLASSES = os.environ.get("BETASAFE_ADULT_ONNX_POS_CLASSES", "").strip()
 ADULT_SKIN_HEURISTIC = _env_bool("BETASAFE_ADULT_SKIN_HEURISTIC", False)
 ADULT_SKIN_THRESHOLD = _env_float("BETASAFE_ADULT_SKIN_THRESHOLD", 0.45)
 ADULT_COMBINE = os.environ.get("BETASAFE_ADULT_COMBINE", "any").strip().lower()

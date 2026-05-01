@@ -21,6 +21,27 @@ import numpy as np
 from . import config
 
 
+def _parse_pos_indices(raw: str) -> list[int]:
+    out: list[int] = []
+    for part in (raw or "").split(","):
+        p = part.strip()
+        if not p:
+            continue
+        try:
+            out.append(int(p))
+        except Exception:
+            continue
+    # stable + unique
+    seen: set[int] = set()
+    uniq: list[int] = []
+    for i in out:
+        if i in seen:
+            continue
+        seen.add(i)
+        uniq.append(i)
+    return uniq
+
+
 class AdultOnnxClassifier:
     def __init__(self, onnx_path: str) -> None:
         import onnxruntime as ort  # type: ignore[import-not-found]
@@ -31,6 +52,7 @@ class AdultOnnxClassifier:
         self._in_h = self._static_dim(shp[2], 224)
         self._in_w = self._static_dim(shp[3], self._in_h)
         self._pos_index = int(config.ADULT_ONNX_POS_CLASS)
+        self._pos_indices = _parse_pos_indices(getattr(config, "ADULT_ONNX_POS_CLASSES", ""))
 
     @staticmethod
     def _static_dim(val: object, fallback: int) -> int:
@@ -52,10 +74,12 @@ class AdultOnnxClassifier:
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         blob = np.transpose(rgb, (2, 0, 1))[None, ...]
         out = self._session.run(None, {self._inp.name: blob})[0]
-        return _parse_positive_probability(np.asarray(out, dtype=np.float64), self._pos_index)
+        return _parse_positive_probability(
+            np.asarray(out, dtype=np.float64), self._pos_index, self._pos_indices
+        )
 
 
-def _parse_positive_probability(raw: np.ndarray, pos_index: int) -> float:
+def _parse_positive_probability(raw: np.ndarray, pos_index: int, pos_indices: list[int] | None) -> float:
     x = np.reshape(raw, (-1,))
     if x.size == 1:
         v = float(x[0])
@@ -71,6 +95,12 @@ def _parse_positive_probability(raw: np.ndarray, pos_index: int) -> float:
     if x.size > 2:
         e = np.exp(x - np.max(x))
         p = e / (np.sum(e) + 1e-9)
+        if pos_indices:
+            best = 0.0
+            for i in pos_indices:
+                ii = max(0, min(int(i), p.size - 1))
+                best = max(best, float(p[ii]))
+            return float(best)
         idx = max(0, min(int(pos_index), p.size - 1))
         return float(p[idx])
     return 0.0
